@@ -12,66 +12,43 @@ function DeletePortfolioForm({ price, reset, setStocksIsLoaded }) {
   const dispatch = useDispatch();
   const history = useHistory();
   const { userId } = useParams();
-  const [deleteToggle, setDeleteToggle] = useState(false);
   const currentUser = useSelector((state) => state.session.user);
-  const portfolios = useSelector((state) => state.portfolios[userId]);
-  const stockInfo = useSelector((state) => state.stocks);
-  const [value, setValue] = useState(0);
   const [toggle, setToggle] = useState(false);
   const [errors, setErrors] = useState(false);
 
   if (!currentUser) history.push("/login");
 
-  useEffect(() => {
-    if (deleteToggle) {
-        let newErrors = {}
-      if (!portfolios?.length) {
-        newErrors.error = "You Have No Assets or History To Delete"
-      }
-      setErrors({...newErrors});
-      if (errors.length > 0 || Object.values(newErrors).length > 0) return errors;
-    }
-  }, [toggle, deleteToggle]);
-
-  const cancelModal = async (e) => {
-    e.preventDefault()
-    console.log(e.target)
-    console.log(deleteToggle)
-    console.log(errors)
+  const cancelModal = (e) => {
     const overlay = document.getElementById("overlay");
-    const yesButton = document.getElementById("confirm-portfolio-reset");
     const noButton = document.getElementById("deny-portfolio-reset");
-    if (e.target === overlay || e.target === noButton){
-        setToggle(false)
-        setDeleteToggle(false);
-        setErrors(false)
+    if (e.target === overlay || e.target === noButton) {
+      setToggle(false);
+      setErrors(false);
     }
-    else if (e.target === yesButton) {
-        setDeleteToggle(true);
-      if (!portfolios?.length) {
+  };
+
+  const handleDelete = async (e) => {
+    e.preventDefault();
+    if (price === 0) {
+      setErrors({
+        ...errors,
+        size: "You Have No Stocks To Sell, Please Purchase Some Stocks To Perform This Action",
+      });
+      return null;
+    }
+    const response = await dispatch(
+      portfolioActions.deletePortfolioItem(userId, price)
+    ).then(async (res) => {
+      const data = res;
+
+      if (data && data.errors) {
+        setErrors(data.errors);
         return null;
-      } else if (portfolios?.length) {
-        const response = await dispatch(
-          portfolioActions.deletePortfolioItem(userId, price)
-        ).catch(async (res) => {
-          const data = res;
-          if (data && data.errors) setErrors(data.errors);
-        });
-        if (!Object.values(errors).length) {
-          setToggle(false);
-          setDeleteToggle(false);
-        }
-        console.log(currentUser);
-        await dispatch(portfolioActions.getPortfoliosByUser(userId));
-        await dispatch(authenticate());
-        reset();
-        setDeleteToggle(false);
-        setToggle(false);
-        return response;
-      } else {
-        setToggle(false);
       }
-    }
+    });
+    await dispatch(authenticate());
+    setToggle(false);
+    return response;
   };
 
   const changeToggle = (e) => {
@@ -85,45 +62,43 @@ function DeletePortfolioForm({ price, reset, setStocksIsLoaded }) {
     if (toggle) {
       return (
         <div className={UlClassName} onClick={cancelModal} id="overlay">
-          <div id="delete-portfolio">
+          <div class="delete-portfolio-card">
             <div>
               {Object.values(errors).map((error) => {
-                return <li className="delete-portfolio-items" id="errors-errors-delete">
-                  {error}
-                </li>;
+                return (
+                  <li
+                    className="delete-portfolio-items"
+                    id="errors-errors-delete"
+                  >
+                    {error}
+                  </li>
+                );
               })}
             </div>
-            <h3 className="delete-portfolio-items" id="delete-form-title">
-              !!!ATTENTION!!!{" "}
-            </h3>
-            <h3 className="delete-portfolio-items">
-              You Are About To Delete Your Portfolio
-            </h3>
-            <p
-              className="delete-portfolio-items"
-              id="delete-portfolio-paragraph"
-            >
-              Doing So Will Liquidate All of Your Assets and Erase All History
-              Of Your Account.
-            </p>
-            <p className="delete-portfolio-items" id="delete-confirm">
-              Would You Like To Continue?
-            </p>
-            <div className="delete-portfolio-items">
-              <button
-                className="delete-portfolio-items"
+            <div class="delete-portfolio-card__warning">
+              <div className='delete-portfolio-card__warning-red'>
+              Warning
+              </div>
+              <div class="delete-portfolio-card__warning-text">
+                Deleting your entire portfolio is irreversible. Are you
+                sure you want to proceed?
+              </div>
+            </div>
+            <div class="delete-portfolio-card__buttons">
+              <div
+                class="delete-portfolio-card__button delete-portfolio-card__button--yes"
+                onClick={handleDelete}
                 id="confirm-portfolio-reset"
-                onClick={cancelModal}
               >
                 Yes
-              </button>{" "}
-              <button
-                className="delete-portfolio-items"
+              </div>
+              <div
+                class="delete-portfolio-card__button delete-portfolio-card__button--no"
                 onClick={cancelModal}
                 id="deny-portfolio-reset"
               >
                 No
-              </button>
+              </div>
             </div>
           </div>
         </div>

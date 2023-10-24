@@ -8,26 +8,22 @@ import { isBefore, isAfter } from "date-fns";
 
 import LoadingSymbol from "../LoadingSymbol";
 import SellStockForm from "../StockSellForm";
-import DeletePortfolioForm from "../DeletePortfolio"
+import DeletePortfolioForm from "../DeletePortfolio";
 import * as stockActions from "../../store/stocks";
 import * as portfolioActions from "../../store/portfolio";
 import * as monthlyActions from "../../store/monthly";
 import * as weeklyActions from "../../store/weekly";
 import "./portfolio.css";
-import { object } from "prop-types";
 
 function PortfolioChart({ current }) {
   const [idx, setIdx] = useState(false);
   const [stocksIsLoaded, setStocksIsLoaded] = useState(false);
   const [createdAt, setCreatedAt] = useState(false);
-  const [seed, setSeed] = useState(1);
 
   const dispatch = useDispatch();
   const history = useHistory();
   const { userId } = useParams();
-  const [toggle, setToggle] = useState(false);
   const [hoverPrice, setHoverPrice] = useState(false);
-  const [stockData, setStockData] = useState(false);
   const [daily, setDaily] = useState(true);
   const [monthly, setMonthly] = useState(false);
   const [weekly, setWeekly] = useState(false);
@@ -36,7 +32,6 @@ function PortfolioChart({ current }) {
   const stockInfo = useSelector((state) => state.stocks);
   const weeklyInfo = useSelector((state) => state.weekly);
   const monthlyInfo = useSelector((state) => state.monthly);
-  const currentUser = useSelector((state) => state.session.user);
   const buyingPower = useSelector((state) => state.session.user?.buyingPower);
   const usDollar = Intl.NumberFormat("en-us", {
     maximumFractionDigits: 2,
@@ -48,7 +43,6 @@ function PortfolioChart({ current }) {
       const res = await dispatch(portfolioActions.getPortfoliosByUser(userId));
       let tickers = Object.values(res[`${userId}`]);
       const newTickers = {};
-      console.log(tickers[0]);
       tickers.forEach((ticker) => {
         if (!newTickers[ticker.symbol])
           newTickers[ticker.symbol] = [ticker.symbol, ticker.created_at];
@@ -62,7 +56,7 @@ function PortfolioChart({ current }) {
           }
 
           // await dispatch(stockActions.stockDataDaily(ticker.symbol));
-          let test = await dispatch(stockActions.stockDataDaily(ticker[0]));
+          await dispatch(stockActions.stockDataDaily(ticker[0]));
           await dispatch(monthlyActions.stockDataMonthly(ticker[0]));
           await dispatch(weeklyActions.stockDataWeekly(ticker[0]));
         });
@@ -73,23 +67,33 @@ function PortfolioChart({ current }) {
         await dispatch(weeklyActions.stockDataWeekly("tsla"));
       }
     };
-    reset(async () => {
-      await setSeed(Math.random);
-    });
-
-    getData()
-      .then(setTimeout(() => setStocksIsLoaded(true), 8000))
-      .then(() => {
+    if (userId) {
+      getData().then(() => {
         if (!current) history.push("/login");
         else if (current?.id !== userId) {
           return <Redirect to={`/portfolios/${userId}`} />;
         }
       });
-  }, [dispatch, userId, daily, monthly, weekly, toggle, data]);
+
+      const delayLoad = setTimeout(() => {
+        setStocksIsLoaded(true);
+        const chartContainer = document.getElementById("portfolioChart");
+        console.log(chartContainer);
+        let chart = chartContainer?.childNodes[0];
+        chartContainer.addEventListener("mouseleave", () => {
+          setHoverPrice(false);
+        });
+      }, 5000);
+      return () => {
+        clearTimeout(delayLoad);
+      };
+    }
+  }, []);
 
   function formattedData(ticker, state) {
     let data2 =
       stocksIsLoaded &&
+      tickerData &&
       (daily
         ? Object.values(state[ticker]["Time Series (Daily)"])
         : weekly
@@ -136,17 +140,42 @@ function PortfolioChart({ current }) {
     }
   };
 
+  const formatValue = () => {
+    if (Object.values(stockInfo).length > 1 && portfolios) {
+      let formatted = [];
+      Object.values(portfolios).forEach((portfolio) => {
+        if (!portfolio?.sold_at) {
+          formatted.push({
+            symbol: portfolio?.symbol,
+            quantity: portfolio?.quantity,
+          });
+        }
+      });
+      let count = 0;
+      formatted.forEach((ticker) => {
+        count =
+          count +
+          Object.values(
+            stockInfo[ticker?.symbol]?.["Time Series (Daily)"]
+          )?.reverse()[0]?.["4. close"] *
+            ticker?.quantity;
+      });
+      return count;
+    } else return 0;
+  };
   const formattedDataPortfolio = (state) => {
     let newData = {};
     let count;
     if (stocksIsLoaded) {
-      if (tickerData) {
-        Object.values(tickerData).forEach((stock) => {
+      if (tickerData && portfolios) {
+        Object.values(portfolios).forEach((stock) => {
           let oldData = formattedData(stock.symbol, state).reverse();
           let index = 0;
           count = 0;
           let labels = stocksIsLoaded && formattedLabels().reverse();
           oldData.forEach((data) => {
+            const createdDate = new Date(stock.created_at);
+            const today = new Date();
             if (!stock.sold_at) {
               if (
                 !isBefore(
@@ -179,7 +208,7 @@ function PortfolioChart({ current }) {
             }
           });
           index++;
-          if (index === Object.values(tickerData).length - 1) setIdx(count);
+          if (index === Object.values(portfolios).length - 1) setIdx(count);
         });
       } else {
         newData = {};
@@ -314,16 +343,38 @@ function PortfolioChart({ current }) {
     },
 
     scales: {
-      y: tickerData
-        ? {
-            grid: {
-              display: false,
-            },
-            min: -4000,
-            ticks: {
-              display: false,
-            },
-          }
+      y: portfolios
+        ? Object.values(portfolios).length > 3 && tickerData
+          ? data?.datasets[0].data[data?.datasets[0].data.length - 1] > 1000
+            ? {
+                grid: {
+                  display: false,
+                },
+                min: -4000,
+                ticks: {
+                  display: false,
+                },
+              }
+            : {
+                grid: {
+                  display: false,
+                },
+                max: 1000,
+                min: -1000,
+                ticks: {
+                  display: false,
+                },
+              }
+          : {
+              grid: {
+                display: false,
+              },
+              max: 1000,
+              min: -1000,
+              ticks: {
+                display: false,
+              },
+            }
         : {
             grid: {
               display: false,
@@ -362,9 +413,17 @@ function PortfolioChart({ current }) {
           item[0]["element"]["$context"]["parsed"]["y"].toFixed(2) || false
         );
       } else setHoverPrice(false);
-      if (e.type === "mouseout") {
+      if (e.type === "mouseleave") {
         setHoverPrice(false);
       }
+    },
+    onmouseout: function (e, item) {
+      console.log(e.type);
+      setHoverPrice(false);
+    },
+    onmouseleave: function (e, item) {
+      console.log(e.type);
+      setHoverPrice(false);
     },
   };
 
@@ -434,26 +493,27 @@ function PortfolioChart({ current }) {
           100
         ).toFixed(2));
 
-  const reset = () => {
-    setSeed(Math.random());
-  };
-
   return stocksIsLoaded ? (
     <>
       <div id="portfolio_container">
+        <p class="portfolio-chart-warning">
+          {" "}
+          The Portfolio Chart Will Not Update In Real-Time, and Will Not Update
+          before 8am and After 4:30pm Eastern Time Monday-Friday or On The
+          Weekends. It Will Update With New Information The Next Time The Market
+          Is Open.
+        </p>
         <DeletePortfolioForm
-          price={data?.datasets[0]?.data[data?.datasets[0]?.data.length - 1]}
-          reset={reset}
+          price={formatValue()}
           setStocksIsLoaded={setStocksIsLoaded}
         />
         <div id="portfolio_info_container">
           {<h1>My Portfolio</h1>}
           <h2 id="portfolio_price">
             $
-            {Number(hoverPrice).toLocaleString("en-US") ||
-              data?.datasets[0]?.data[data?.datasets[0]?.data?.length - 1]
-                .toFixed(2)
-                .toLocaleString("en-US")}
+            {hoverPrice
+              ? Number(hoverPrice).toLocaleString("en-US")
+              : formatValue().toLocaleString("en-US")}
           </h2>
           <h3 id={changeId}>
             {formattedChange.toFixed(2).toLocaleString("en-US") >= 0
@@ -473,12 +533,12 @@ function PortfolioChart({ current }) {
             {stocksIsLoaded
               ? daily
                 ? "Today"
-                : "As of " + (createdAt ? createdAt.slice(0, 16) : 'Today')
+                : "As of " + (createdAt ? createdAt.slice(0, 16) : "Today")
               : ""}
           </h3>
         </div>
         <div id="portfolioChart">
-          <Line data={data} options={options} id="portfolioChart2" key={seed} />
+          <Line data={data} options={options} id="portfolioChart2" />
         </div>
 
         <div id="chart-buttons">
